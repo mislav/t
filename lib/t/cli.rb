@@ -877,6 +877,38 @@ module T
     desc "stream SUBCOMMAND ...ARGS", "Commands for streaming Tweets."
     subcommand 'stream', T::Stream
 
+    include Thor::Actions
+
+    def self.source_root
+      File.expand_path('../../..', __FILE__)
+    end
+
+    desc "standalone", "Bootstraps t so it can run outside of RubyGems (faster)."
+    method_option "prefix", :default => "/usr/local", :desc => "Location where to install"
+    def standalone
+      require 'rbconfig'
+      ruby_bin = File.join RbConfig::CONFIG['bindir'], RbConfig::CONFIG['ruby_install_name']
+      self.destination_root = options[:prefix]
+      libdir = File.join destination_root, 'lib/t'
+
+      directory 'lib', 'lib/t'
+
+      inside 'lib/t' do
+        create_file 'Gemfile', "source :rubygems\ngemspec :path => #{self.class.source_root.inspect}"
+        system %(bundle install --path vendor --without development --standalone)
+      end
+
+      copy_file 'bin/t'
+      prepend_to_file 'bin/t' do
+        rb = "#!#{ruby_bin}"
+        rb << " --disable-gems" if RUBY_VERSION >= '1.9'
+        rb << " -r#{libdir}/vendor/bundler/setup\n"
+        rb << "$LOAD_PATH[0] = #{libdir.inspect}\n\n"
+        rb
+      end
+      chmod 'bin/t', 0755
+    end
+
   private
 
     def location
